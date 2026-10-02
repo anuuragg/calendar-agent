@@ -67,6 +67,7 @@ def list_events(
         events.append({
             "id": event.get("id"),
             "title": event.get("summary", "Untitled"),
+            "description": event.get("description", ""),
             "start": start.get("dateTime", start.get("date")),
             "end": end.get("dateTime", end.get("date")),
             "status": event.get("status"),
@@ -75,7 +76,7 @@ def list_events(
     return events
 
 
-def add_event(title, date, time, duration_minutes):
+def add_event(title, date, time, duration_minutes, description=None):
     service = get_calendar_service()
 
     timezone = ZoneInfo(TIMEZONE)
@@ -88,6 +89,7 @@ def add_event(title, date, time, duration_minutes):
 
     event = {
         "summary": title,
+        "description": description or "",
         "start": {
             "dateTime": start.isoformat(),
             "timeZone": TIMEZONE,
@@ -107,6 +109,7 @@ def add_event(title, date, time, duration_minutes):
         "success": True,
         "id": created["id"],
         "title": created.get("summary"),
+        "description": created.get("description"),
         "start": created["start"].get("dateTime"),
         "end": created["end"].get("dateTime"),
     }

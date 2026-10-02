@@ -129,8 +129,13 @@ tools = [
                     },
                     "duration_minutes": {
                         "type": "integer",
+                        "description": "Duration of the event in minutes.",
+                    },
+                    "description": {
+                        "type": "string",
                         "description": (
-                            "Duration of the event in minutes."
+                            "Optional notes, agenda, curriculum, "
+                            "resources, links, or other details for the event."
                         ),
                     },
                 },
