@@ -201,18 +201,22 @@ tools = [
 ]
 
 
+# Conversation history
+messages = [
+    {
+        "role": "system",
+        "content": build_system_prompt(),
+    }
+]
+
+
 def run_agent(user_input, max_iterations=10):
 
-    messages = [
-        {
-            "role": "system",
-            "content": build_system_prompt(),
-        },
-        {
-            "role": "user",
-            "content": user_input,
-        },
-    ]
+    # Add the new user message to the existing conversation
+    messages.append({
+        "role": "user",
+        "content": user_input,
+    })
 
     for iteration in range(max_iterations):
 
@@ -227,7 +231,7 @@ def run_agent(user_input, max_iterations=10):
 
         message = response.choices[0].message
 
-        # Add assistant's response to conversation history
+        # Add assistant response to conversation history
         messages.append(
             message.model_dump(exclude_none=True)
         )
@@ -240,7 +244,6 @@ def run_agent(user_input, max_iterations=10):
 
             return message.content
 
-        
         # Execute tool calls
         for call in message.tool_calls:
 
@@ -289,8 +292,3 @@ def run_agent(user_input, max_iterations=10):
     )
 
     return None
-
-
-if __name__ == "__main__":
-    user_input = input("You: ")
-    run_agent(user_input)
