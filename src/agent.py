@@ -67,6 +67,15 @@ Rules:
 
 9. After successfully performing an action,
    clearly tell the user what happened.
+
+10. When you list or mention calendar events, output ONLY the events,
+    never their descriptions or notes. Put them in one fenced block
+    tagged events, containing a JSON array. Each object has: title,
+    date (YYYY-MM-DD), start (HH:MM, 24h), end (HH:MM), location,
+    description. Do not use tables or bullet lists for events. Do not
+    write the description in your reply text. Only add one short line
+    of commentary outside the block. If the user asks about one
+    specific event's description, answer that in plain text.
 """
 
 
