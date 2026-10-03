@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from groq import Groq
 
-from tools import tool_functions
+from mcp import Client
 
 
 load_dotenv()
@@ -51,162 +51,25 @@ Rules:
    - determine the correct date
    - determine the start time
    - determine the duration
-   - if the duration is not provided, ask the user.
+   - if duration is not provided, ask the user.
 
-5. Never delete an event without explicit confirmation
+5. You may add descriptions or notes to events when the user
+   provides additional information.
+
+6. Never delete an event without explicit confirmation
    from the user.
 
-6. When moving an event, first identify the correct event
+7. When moving an event, first identify the correct event
    if the user has not provided an event ID.
 
-7. Use the calendar tools whenever calendar information
+8. Use the calendar tools whenever calendar information
    is required.
 
-8. After successfully performing an action,
+9. After successfully performing an action,
    clearly tell the user what happened.
 """
 
 
-tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "list_events",
-            "description": (
-                "List events from Google Calendar. "
-                "Use this when you need to inspect existing events "
-                "or find events matching a user's request."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "start_date": {
-                        "type": "string",
-                        "description": (
-                            "Start date/time in ISO format. "
-                            "Example: 2026-10-03T00:00:00"
-                        ),
-                    },
-                    "end_date": {
-                        "type": "string",
-                        "description": (
-                            "End date/time in ISO format. "
-                            "Example: 2026-10-04T00:00:00"
-                        ),
-                    },
-                    "query": {
-                        "type": "string",
-                        "description": (
-                            "Optional text search for an event title, "
-                            "description, location, etc."
-                        ),
-                    },
-                },
-                "required": [],
-            },
-        },
-    },
-
-    {
-        "type": "function",
-        "function": {
-            "name": "add_event",
-            "description": "Create a new Google Calendar event.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "title": {
-                        "type": "string",
-                        "description": "Event title.",
-                    },
-                    "date": {
-                        "type": "string",
-                        "description": "Event date in YYYY-MM-DD format.",
-                    },
-                    "time": {
-                        "type": "string",
-                        "description": "Event start time in HH:MM format.",
-                    },
-                    "duration_minutes": {
-                        "type": "integer",
-                        "description": "Duration of the event in minutes.",
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": (
-                            "Optional notes, agenda, curriculum, "
-                            "resources, links, or other details for the event."
-                        ),
-                    },
-                },
-                "required": [
-                    "title",
-                    "date",
-                    "time",
-                    "duration_minutes",
-                ],
-            },
-        },
-    },
-
-    {
-        "type": "function",
-        "function": {
-            "name": "move_event",
-            "description": (
-                "Move an existing Google Calendar event "
-                "to a new date and time."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "event_id": {
-                        "type": "string",
-                        "description": "Google Calendar event ID.",
-                    },
-                    "date": {
-                        "type": "string",
-                        "description": "New date in YYYY-MM-DD format.",
-                    },
-                    "time": {
-                        "type": "string",
-                        "description": "New start time in HH:MM format.",
-                    },
-                },
-                "required": [
-                    "event_id",
-                    "date",
-                    "time",
-                ],
-            },
-        },
-    },
-
-    {
-        "type": "function",
-        "function": {
-            "name": "remove_event",
-            "description": (
-                "Delete an event from Google Calendar. "
-                "NEVER use this unless the user has explicitly "
-                "confirmed that the event should be deleted."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "event_id": {
-                        "type": "string",
-                        "description": "Google Calendar event ID.",
-                    },
-                },
-                "required": ["event_id"],
-            },
-        },
-    },
-]
-
-
-# Conversation history
 messages = [
     {
         "role": "system",
@@ -215,9 +78,53 @@ messages = [
 ]
 
 
-def run_agent(user_input, max_iterations=10):
+def convert_mcp_tools_to_groq(mcp_tools):
+    
+    #Convert MCP tool definitions into the format expected by Groq's tool calling API.
 
-    # Add the new user message to the existing conversation
+    tools = []
+
+    for tool in mcp_tools:
+
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description or "",
+                "parameters": tool.input_schema,
+            },
+        })
+
+    return tools
+
+
+def get_mcp_result(result):
+    
+    # Convert an MCP CallToolResult into a string that can be sent back to the Groq model.
+    if result.structured_content:
+        return json.dumps(result.structured_content)
+
+    content = []
+
+    for item in result.content:
+
+        if hasattr(item, "text"):
+            content.append(item.text)
+
+        else:
+            content.append(str(item))
+
+    return "\n".join(content)
+
+
+async def run_agent(
+    user_input,
+    mcp_client,
+    groq_tools,
+    max_iterations=10,
+):
+
+    # Add user message to conversation history
     messages.append({
         "role": "user",
         "content": user_input,
@@ -230,7 +137,7 @@ def run_agent(user_input, max_iterations=10):
         response = client.chat.completions.create(
             model=MODEL,
             messages=messages,
-            tools=tools,
+            tools=groq_tools,
             tool_choice="auto",
         )
 
@@ -244,12 +151,9 @@ def run_agent(user_input, max_iterations=10):
         # Agent finished
         if not message.tool_calls:
 
-            print("\nFinal answer:")
-            print(message.content)
-
             return message.content
 
-        # Execute tool calls
+        # Execute MCP tool calls
         for call in message.tool_calls:
 
             name = call.function.name
@@ -263,37 +167,30 @@ def run_agent(user_input, max_iterations=10):
             print("  Arguments:", arguments)
             print("  ID:", call.id)
 
-            function = tool_functions.get(name)
+            try:
 
-            if function is None:
+                # Call the tool through MCP
+                result = await mcp_client.call_tool(
+                    name,
+                    arguments,
+                )
 
-                result = {
-                    "error": f"Unknown tool: {name}"
-                }
+                tool_result = get_mcp_result(result)
 
-            else:
+            except Exception as e:
 
-                try:
-                    result = function(**arguments)
-
-                except Exception as e:
-
-                    result = {
-                        "error": str(e)
-                    }
+                tool_result = json.dumps({
+                    "error": str(e)
+                })
 
             print("Tool result:")
-            print(" ", result)
+            print(" ", tool_result)
 
-            # Send tool result back to the model
+            # Send MCP result back to Groq
             messages.append({
                 "role": "tool",
                 "tool_call_id": call.id,
-                "content": json.dumps(result),
+                "content": tool_result,
             })
 
-    print(
-        "\nAgent stopped: maximum iterations reached."
-    )
-
-    return None
+    return "I reached the maximum number of tool calls."

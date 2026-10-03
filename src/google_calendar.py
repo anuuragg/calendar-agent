@@ -26,21 +26,28 @@ def list_events(
 ):
     service = get_calendar_service()
 
-    now = datetime.now(ZoneInfo(TIMEZONE))
+    timezone = ZoneInfo(TIMEZONE)
+    now = datetime.now(timezone)
 
-    time_min = (
-        datetime.fromisoformat(start_date)
-        .replace(tzinfo=ZoneInfo(TIMEZONE))
-        if start_date
-        else now
-    )
+    # Set the start of the time range
+    if start_date:
+        time_min = datetime.fromisoformat(
+            start_date
+        ).replace(tzinfo=timezone)
+    else:
+        time_min = now
 
-    time_max = (
-        datetime.fromisoformat(end_date)
-        .replace(tzinfo=ZoneInfo(TIMEZONE))
-        if end_date
-        else None
-    )
+    # Set the end of the time range
+    if end_date:
+        time_max = datetime.fromisoformat(
+            end_date
+        ).replace(tzinfo=timezone)
+
+        # If only a date was provided, include the entire day
+        if len(end_date) == 10:
+            time_max += timedelta(days=1)
+    else:
+        time_max = None
 
     params = {
         "calendarId": "primary",
@@ -68,15 +75,27 @@ def list_events(
             "id": event.get("id"),
             "title": event.get("summary", "Untitled"),
             "description": event.get("description", ""),
-            "start": start.get("dateTime", start.get("date")),
-            "end": end.get("dateTime", end.get("date")),
+            "start": start.get(
+                "dateTime",
+                start.get("date")
+            ),
+            "end": end.get(
+                "dateTime",
+                end.get("date")
+            ),
             "status": event.get("status"),
         })
 
     return events
 
 
-def add_event(title, date, time, duration_minutes, description=None):
+def add_event(
+    title,
+    date,
+    time,
+    duration_minutes,
+    description=None,
+):
     service = get_calendar_service()
 
     timezone = ZoneInfo(TIMEZONE)
@@ -85,7 +104,9 @@ def add_event(title, date, time, duration_minutes, description=None):
         f"{date}T{time}"
     ).replace(tzinfo=timezone)
 
-    end = start + timedelta(minutes=duration_minutes)
+    end = start + timedelta(
+        minutes=duration_minutes
+    )
 
     event = {
         "summary": title,
